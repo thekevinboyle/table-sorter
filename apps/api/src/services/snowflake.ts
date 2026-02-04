@@ -8,7 +8,7 @@ import type {
 
 // Snowflake SDK types
 interface SnowflakeConnection {
-  connect: (callback: (err: Error | undefined, conn: SnowflakeConnection) => void) => void
+  connectAsync: () => Promise<SnowflakeConnection>
   execute: (options: {
     sqlText: string
     complete: (err: Error | undefined, stmt: unknown, rows: unknown[]) => void
@@ -18,19 +18,14 @@ interface SnowflakeConnection {
   getId: () => string
 }
 
-interface SnowflakePool {
-  use: (callback: (clientConnection: SnowflakeConnection) => Promise<unknown>) => Promise<unknown>
-  drain: () => Promise<void>
-}
-
 class SnowflakeService {
-  private pool: SnowflakePool | null = null
+  private connection: SnowflakeConnection | null = null
   private config: SnowflakeConnectionConfig | null = null
   private connectedAt: Date | null = null
 
   async connect(config: SnowflakeConnectionConfig): Promise<ConnectionStatus> {
     // Disconnect existing connection if any
-    if (this.pool) {
+    if (this.connection) {
       await this.disconnect()
     }
 
@@ -41,29 +36,20 @@ class SnowflakeService {
 
     this.config = { ...config, account }
 
-    // Create connection pool
-    // Use EXTERNALBROWSER for MFA/SSO authentication
-    this.pool = snowflake.createPool(
-      {
-        account,
-        username: config.username,
-        password: config.password,
-        warehouse: config.warehouse,
-        database: config.database,
-        schema: config.schema,
-        role: config.role,
-        authenticator: 'EXTERNALBROWSER', // Opens browser for MFA/SSO
-      },
-      {
-        max: 10,
-        min: 1,
-        evictionRunIntervalMillis: 60000, // Check for idle connections every minute
-        idleTimeoutMillis: 300000, // Close connections idle for 5 minutes
-      }
-    ) as SnowflakePool
+    // Create connection with EXTERNALBROWSER for MFA/SSO
+    this.connection = snowflake.createConnection({
+      account,
+      username: config.username,
+      password: config.password || undefined,
+      warehouse: config.warehouse,
+      database: config.database,
+      schema: config.schema,
+      role: config.role,
+      authenticator: 'EXTERNALBROWSER', // Opens browser for MFA/SSO
+    }) as SnowflakeConnection
 
-    // Test the connection
-    await this.executeQuery('SELECT CURRENT_VERSION()')
+    // Use connectAsync for external browser auth
+    await this.connection.connectAsync()
 
     this.connectedAt = new Date()
 
@@ -71,9 +57,14 @@ class SnowflakeService {
   }
 
   async disconnect(): Promise<void> {
-    if (this.pool) {
-      await this.pool.drain()
-      this.pool = null
+    if (this.connection) {
+      await new Promise<void>((resolve, reject) => {
+        this.connection!.destroy((err) => {
+          if (err) reject(err)
+          else resolve()
+        })
+      })
+      this.connection = null
     }
     this.config = null
     this.connectedAt = null
@@ -81,7 +72,7 @@ class SnowflakeService {
 
   getStatus(): ConnectionStatus {
     return {
-      isConnected: this.pool !== null,
+      isConnected: this.connection !== null && this.connection.isUp(),
       account: this.config?.account ?? null,
       warehouse: this.config?.warehouse ?? null,
       database: this.config?.database ?? null,
@@ -91,27 +82,21 @@ class SnowflakeService {
   }
 
   async executeQuery<T = TableRow>(sqlText: string): Promise<T[]> {
-    if (!this.pool) {
+    if (!this.connection) {
       throw new Error('Not connected to Snowflake')
     }
 
     return new Promise((resolve, reject) => {
-      this.pool!.use(async (connection) => {
-        return new Promise<T[]>((innerResolve, innerReject) => {
-          connection.execute({
-            sqlText,
-            complete: (err, _stmt, rows) => {
-              if (err) {
-                innerReject(err)
-              } else {
-                innerResolve(rows as T[])
-              }
-            },
-          })
-        })
+      this.connection!.execute({
+        sqlText,
+        complete: (err, _stmt, rows) => {
+          if (err) {
+            reject(err)
+          } else {
+            resolve(rows as T[])
+          }
+        },
       })
-        .then((result) => resolve(result as T[]))
-        .catch(reject)
     })
   }
 
