@@ -34,12 +34,17 @@ class SnowflakeService {
       await this.disconnect()
     }
 
-    this.config = config
+    // Clean up account - remove .snowflakecomputing.com if user included it
+    let account = config.account
+    account = account.replace(/\.snowflakecomputing\.com$/i, '')
+    account = account.replace(/^https?:\/\//i, '')
+
+    this.config = { ...config, account }
 
     // Create connection pool
     this.pool = snowflake.createPool(
       {
-        account: config.account,
+        account,
         username: config.username,
         password: config.password,
         warehouse: config.warehouse,
