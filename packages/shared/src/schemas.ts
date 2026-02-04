@@ -4,7 +4,7 @@ import { z } from 'zod'
 export const ConnectionConfigSchema = z.object({
   account: z.string().min(1, 'Account is required'),
   username: z.string().min(1, 'Username is required'),
-  password: z.string().min(1, 'Password is required'),
+  password: z.string().optional(), // Optional for EXTERNALBROWSER auth
   warehouse: z.string().optional(),
   database: z.string().optional(),
   schema: z.string().optional(),

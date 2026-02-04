@@ -42,6 +42,7 @@ class SnowflakeService {
     this.config = { ...config, account }
 
     // Create connection pool
+    // Use EXTERNALBROWSER for MFA/SSO authentication
     this.pool = snowflake.createPool(
       {
         account,
@@ -51,6 +52,7 @@ class SnowflakeService {
         database: config.database,
         schema: config.schema,
         role: config.role,
+        authenticator: 'EXTERNALBROWSER', // Opens browser for MFA/SSO
       },
       {
         max: 10,

@@ -65,7 +65,7 @@ export function ConnectionDialog({ defaultOpen, open, onOpenChange }: Connection
               Connect to Snowflake
             </DialogTitle>
             <DialogDescription>
-              Enter your Snowflake credentials to connect and explore your data.
+              Enter your Snowflake credentials. A browser window will open for MFA/SSO authentication.
             </DialogDescription>
           </DialogHeader>
 
@@ -93,14 +93,13 @@ export function ConnectionDialog({ defaultOpen, open, onOpenChange }: Connection
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="password">Password *</Label>
+              <Label htmlFor="password">Password (optional for SSO)</Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="••••••••"
+                placeholder="Leave blank for browser auth"
                 value={formData.password}
                 onChange={handleChange('password')}
-                required
               />
             </div>
 
